@@ -2,7 +2,8 @@ import {
   cleanSeller,
   extractLdJson,
   fetchPage,
-  findPriceInText,
+  getPrimaryOffer,
+  normalizePrice,
   normalizeAvailability,
   textIncludesAny,
   unknown
@@ -26,35 +27,39 @@ export async function checkWalmart(product) {
     const type = Array.isArray(node["@type"]) ? node["@type"].join(" ") : node["@type"];
     return String(type || "").toLowerCase().includes("product");
   });
-  const offers = Array.isArray(productNode?.offers) ? productNode.offers[0] : productNode?.offers;
+  const offers = getPrimaryOffer(productNode);
 
   const ldAvailability = normalizeAvailability(offers?.availability);
-  const price = Number.isFinite(Number(offers?.price)) ? Number(offers.price) : findPriceInText(html);
+  const price = normalizePrice(offers?.price || offers?.priceSpecification?.price);
   const seller = cleanSeller(
     offers?.seller?.name ||
       offers?.seller ||
-      findSeller(html) ||
-      "Walmart"
+      findSeller(html)
   );
 
   const unavailable = textIncludesAny(html, [
     "out of stock",
     "sold out",
     "currently unavailable",
-    "not available"
+    "not available",
+    "temporarily out of stock"
   ]);
-  const shippingSignal = textIncludesAny(html, [
-    "shipping",
-    "delivery",
-    "add to cart",
-    "arrives"
-  ]);
-  const available = textIncludesAny(html, ["in stock", "add to cart", "arrives"]);
-  const inStock = ldAvailability === true || (ldAvailability === null && available && !unavailable);
-  const onlineAvailable = inStock && shippingSignal && !unavailable;
+  const shippingSignal = textIncludesAny(html, ["shipping", "delivery", "arrives"]);
 
-  if (price === null || (!productNode && !available && !unavailable)) {
-    return unknown("Walmart page did not expose enough stable stock data", `http=${page.statusCode}`);
+  if (!productNode || !offers) {
+    if (unavailable) {
+      return {
+        status: "out_of_stock",
+        in_stock: false,
+        online_available: false,
+        price: null,
+        seller,
+        confidence: "medium",
+        message: "Walmart page indicates the item is unavailable, but structured offer data was missing",
+        raw_summary: `ld=${Boolean(productNode)} offer=${Boolean(offers)}`
+      };
+    }
+    return unknown("Walmart page did not expose structured product offer data", `http=${page.statusCode}`);
   }
 
   if (unavailable || ldAvailability === false) {
@@ -64,22 +69,39 @@ export async function checkWalmart(product) {
       online_available: false,
       price,
       seller,
-      confidence: productNode ? "medium" : "low",
+      confidence: "medium",
       message: "Walmart indicates the item is unavailable",
-      raw_summary: `ld=${Boolean(productNode)}`
+      raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
     };
   }
 
-  if (!onlineAvailable) {
+  if (price === null) {
+    return unknown("Walmart structured offer did not include a trustworthy price", "ld=true offer=true");
+  }
+
+  if (ldAvailability !== true) {
     return {
       status: "unknown",
-      in_stock: inStock,
+      in_stock: false,
       online_available: false,
       price,
       seller,
       confidence: "low",
-      message: "Walmart stock may be local-only or shipping availability was unclear",
-      raw_summary: `ld=${Boolean(productNode)}`
+      message: "Walmart structured offer did not explicitly say InStock",
+      raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
+    };
+  }
+
+  if (!shippingSignal) {
+    return {
+      status: "unknown",
+      in_stock: true,
+      online_available: false,
+      price,
+      seller,
+      confidence: "low",
+      message: "Walmart offer appears in stock, but online shipping availability was unclear",
+      raw_summary: "ld=true offer=true"
     };
   }
 
@@ -88,10 +110,10 @@ export async function checkWalmart(product) {
     in_stock: true,
     online_available: true,
     price,
-    seller,
-    confidence: productNode ? "medium" : "low",
-    message: "Walmart page indicates online availability",
-    raw_summary: `ld=${Boolean(productNode)}`
+    seller: seller || "Walmart",
+    confidence: "medium",
+    message: "Walmart structured offer indicates online availability",
+    raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
   };
 }
 

@@ -2,7 +2,8 @@ import {
   cleanSeller,
   extractLdJson,
   fetchPage,
-  findPriceInText,
+  getPrimaryOffer,
+  normalizePrice,
   normalizeAvailability,
   textIncludesAny,
   unknown
@@ -27,35 +28,35 @@ export async function checkTarget(product) {
     return String(type || "").toLowerCase().includes("product");
   });
 
-  const offers = Array.isArray(productNode?.offers) ? productNode.offers[0] : productNode?.offers;
-  const ldAvailability = normalizeAvailability(offers?.availability);
-  const ldPrice = offers?.price ? Number(offers.price) : null;
+  const offers = getPrimaryOffer(productNode);
+  const ldAvailability = normalizeAvailability(offers?.availability || offers?.itemAvailability);
+  const price = normalizePrice(offers?.price || offers?.priceSpecification?.price);
   const seller = cleanSeller(offers?.seller?.name || offers?.seller || "Target");
 
   const pageSaysUnavailable = textIncludesAny(html, [
     "out of stock",
     "sold out",
     "currently unavailable",
-    "not available"
+    "not available",
+    "temporarily out of stock",
+    "preorder sold out"
   ]);
-  const shippingSignal = textIncludesAny(html, [
-    "ship it",
-    "shipping",
-    "delivery",
-    "add to cart"
-  ]);
-  const pageSaysAvailable = textIncludesAny(html, [
-    "in stock",
-    "add to cart",
-    "ship it"
-  ]);
+  const shippingSignal = textIncludesAny(html, ["ship it", "shipping", "delivery"]);
 
-  const price = Number.isFinite(ldPrice) ? ldPrice : findPriceInText(html);
-  const inStock = ldAvailability === true || (ldAvailability === null && pageSaysAvailable && !pageSaysUnavailable);
-  const onlineAvailable = inStock && shippingSignal && !pageSaysUnavailable;
-
-  if (price === null || (!productNode && !pageSaysUnavailable && !pageSaysAvailable)) {
-    return unknown("Target page did not expose enough stable stock data", `http=${page.statusCode}`);
+  if (!productNode || !offers) {
+    if (pageSaysUnavailable) {
+      return {
+        status: "out_of_stock",
+        in_stock: false,
+        online_available: false,
+        price: null,
+        seller,
+        confidence: "medium",
+        message: "Target page indicates the item is unavailable, but structured offer data was missing",
+        raw_summary: `ld=${Boolean(productNode)} offer=${Boolean(offers)}`
+      };
+    }
+    return unknown("Target page did not expose structured product offer data", `http=${page.statusCode}`);
   }
 
   if (pageSaysUnavailable || ldAvailability === false) {
@@ -65,22 +66,39 @@ export async function checkTarget(product) {
       online_available: false,
       price,
       seller,
-      confidence: productNode ? "medium" : "low",
+      confidence: "medium",
       message: "Target indicates the item is unavailable",
-      raw_summary: `ld=${Boolean(productNode)}`
+      raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
     };
   }
 
-  if (!onlineAvailable) {
+  if (price === null) {
+    return unknown("Target structured offer did not include a trustworthy price", "ld=true offer=true");
+  }
+
+  if (ldAvailability !== true) {
     return {
       status: "unknown",
-      in_stock: inStock,
+      in_stock: false,
       online_available: false,
       price,
       seller,
       confidence: "low",
-      message: "Target stock may be local-only or shipping availability was unclear",
-      raw_summary: `ld=${Boolean(productNode)}`
+      message: "Target structured offer did not explicitly say InStock",
+      raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
+    };
+  }
+
+  if (!shippingSignal) {
+    return {
+      status: "unknown",
+      in_stock: true,
+      online_available: false,
+      price,
+      seller,
+      confidence: "low",
+      message: "Target offer appears in stock, but online shipping availability was unclear",
+      raw_summary: "ld=true offer=true"
     };
   }
 
@@ -90,8 +108,8 @@ export async function checkTarget(product) {
     online_available: true,
     price,
     seller,
-    confidence: productNode ? "medium" : "low",
-    message: "Target page indicates online availability",
-    raw_summary: `ld=${Boolean(productNode)}`
+    confidence: "medium",
+    message: "Target structured offer indicates online availability",
+    raw_summary: `ld=true offer=true availability=${offers?.availability || ""}`
   };
 }

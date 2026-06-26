@@ -57,11 +57,6 @@ export function flattenJson(value) {
   return [];
 }
 
-export function findPriceInText(text) {
-  const match = String(text).match(/\$?\s*([0-9]{1,4}(?:\.[0-9]{2}))/);
-  return match ? Number(match[1]) : null;
-}
-
 export function stripTags(value) {
   return String(value).replace(/<[^>]*>/g, "");
 }
@@ -91,4 +86,17 @@ export function normalizeAvailability(value) {
   if (text.includes("instock") || text.includes("in stock")) return true;
   if (text.includes("outofstock") || text.includes("out of stock") || text.includes("soldout")) return false;
   return null;
+}
+
+export function normalizePrice(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const match = String(value).replaceAll(",", "").match(/[0-9]+(?:\.[0-9]{1,2})?/);
+  if (!match) return null;
+  const price = Number(match[0]);
+  return Number.isFinite(price) ? price : null;
+}
+
+export function getPrimaryOffer(productNode) {
+  const offers = Array.isArray(productNode?.offers) ? productNode.offers : [productNode?.offers];
+  return offers.find((offer) => offer && typeof offer === "object") || null;
 }
