@@ -21,6 +21,33 @@ export async function fetchPage(url) {
   }
 }
 
+export async function fetchJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "accept": "application/json",
+        "accept-language": "en-US,en;q=0.8",
+        "origin": "https://www.target.com",
+        "referer": "https://www.target.com/",
+        "user-agent": "TCGStockWatcher/1.0 personal stock alert checker"
+      }
+    });
+    const text = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { ok: false, statusCode: response.status, json: null, text };
+    }
+    return { ok: response.ok, statusCode: response.status, json, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function unknown(message, rawSummary = "") {
   return {
     status: "unknown",
