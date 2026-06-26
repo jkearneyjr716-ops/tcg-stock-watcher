@@ -1,0 +1,20 @@
+{
+  "name": "tcg-stock-watcher",
+  "version": "1.0.0",
+  "description": "Private Pokemon TCG stock alert dashboard for Target and Walmart.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/migrate.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "web-push": "^3.6.7"
+  }
+}
