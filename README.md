@@ -80,10 +80,15 @@ iOS web push requires the Home Screen app flow. Normal Safari tabs cannot receiv
    VAPID_PRIVATE_KEY=your-private-key
    VAPID_SUBJECT=mailto:you@example.com
    SCAN_DEFAULT_INTERVAL_SECONDS=900
+   TARGET_STORE_ID=2170
+   TARGET_ZIP=08332
+   TARGET_STATE=NJ
+   TARGET_LATITUDE=39.330
+   TARGET_LONGITUDE=-75.040
    NODE_ENV=production
    ```
 
-6. Deploy. `railway.json` runs `npm run migrate && npm start`.
+6. Deploy. This repo pins Railway/Nixpacks to Node 20 in `.nvmrc`, `package.json`, and `nixpacks.toml`. `railway.json` runs `npm run migrate && npm start`.
 7. Confirm `/health` returns `{ "ok": true }`.
 
 ## Adding Products
@@ -95,7 +100,9 @@ iOS web push requires the Home Screen app flow. Normal Safari tabs cannot receiv
 
 ## Known Limitations
 
-Target and Walmart change page markup frequently and may render availability dynamically. The checkers prefer JSON-LD and obvious page text signals, then return `unknown` when stock, shipping, price, or seller confidence is low. Unknown statuses never trigger alerts.
+Target and Walmart change page markup frequently and may render availability dynamically. The Target checker uses Target's public RedSky product and fulfillment responses for price and online shipping stock, then falls back to page data only when confidence is adequate. Unknown statuses never trigger alerts.
+
+Target fulfillment depends on a store/ZIP context. Set `TARGET_STORE_ID`, `TARGET_ZIP`, `TARGET_STATE`, `TARGET_LATITUDE`, and `TARGET_LONGITUDE` to the area you want Target shipping availability checked against.
 
 Playwright is intentionally not installed by default. If a specific watched page cannot expose useful server-rendered data, add Playwright later as a narrowly scoped fallback for that checker. Keep the same alert rule and return `unknown` when confidence is low.
 
