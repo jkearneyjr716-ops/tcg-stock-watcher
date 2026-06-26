@@ -4,7 +4,7 @@
   "description": "Private Pokemon TCG stock alert dashboard for Target and Walmart.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "20"
   },
   "scripts": {
     "start": "node src/server.js",
